@@ -219,14 +219,7 @@ pub fn core_main() -> Option<CoreMainAction> {
         std::thread::spawn(move || crate::start_server(false, no_server));
     } else {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
-        // Root CLI management commands must talk to the user `--server` main IPC.
-        // Example: `sudo rustdesk --option custom-rendezvous-server` should query the
-        // user's IPC instead of root's `/tmp/<app>-0/ipc`; `connect()` still limits this
-        // routing to empty-postfix main IPC only.
-        let _user_main_ipc_scope = if crate::platform::is_installed()
-            && is_root()
-            && is_user_main_ipc_scope_cli_command(&args)
-        {
+        let _user_main_ipc_scope = if is_user_main_ipc_scope_cli_command(&args) {
             Some(crate::ipc::UserMainIpcScope::new())
         } else {
             None
@@ -423,23 +416,15 @@ pub fn core_main() -> Option<CoreMainAction> {
             }
             return None;
         } else if args[0] == "--password" {
-            if is_cli_setting_change_disabled() {
-                println!("Settings are disabled!");
-                return None;
-            }
             if config::Config::is_disable_change_permanent_password() {
                 println!("Changing permanent password is disabled!");
                 return None;
             }
             if args.len() == 2 {
-                if crate::platform::is_installed() && is_root() {
-                    if let Err(err) = crate::ipc::set_permanent_password(args[1].to_owned()) {
-                        println!("{err}");
-                    } else {
-                        println!("Done!");
-                    }
+                if let Err(err) = crate::ipc::set_permanent_password(args[1].to_owned()) {
+                    println!("{err}");
                 } else {
-                    println!("Installation and administrative privileges required!");
+                    println!("Done!");
                 }
             }
             return None;
@@ -450,14 +435,10 @@ pub fn core_main() -> Option<CoreMainAction> {
             }
             #[cfg(feature = "flutter")]
             if args.len() == 2 {
-                if crate::platform::is_installed() && is_root() {
-                    if let Err(err) = crate::ipc::set_unlock_pin(args[1].to_owned(), false) {
-                        println!("{err}");
-                    } else {
-                        println!("Done!");
-                    }
+                if let Err(err) = crate::ipc::set_unlock_pin(args[1].to_owned(), false) {
+                    println!("{err}");
                 } else {
-                    println!("Installation and administrative privileges required!");
+                    println!("Done!");
                 }
             }
             return None;
@@ -465,72 +446,51 @@ pub fn core_main() -> Option<CoreMainAction> {
             println!("{}", crate::ipc::get_id());
             return None;
         } else if args[0] == "--set-id" {
-            if is_cli_setting_change_disabled() {
-                println!("Settings are disabled!");
-                return None;
-            }
             if config::Config::is_disable_change_id() {
                 println!("Changing ID is disabled!");
                 return None;
             }
             if args.len() == 2 {
-                if crate::platform::is_installed() && is_root() {
-                    let old_id = crate::ipc::get_id();
-                    let mut res = crate::ui_interface::change_id_shared(args[1].to_owned(), old_id);
-                    if res.is_empty() {
-                        res = "Done!".to_owned();
-                    }
-                    println!("{}", res);
-                } else {
-                    println!("Installation and administrative privileges required!");
+                let old_id = crate::ipc::get_id();
+                let mut res = crate::ui_interface::change_id_shared(args[1].to_owned(), old_id);
+                if res.is_empty() {
+                    res = "Done!".to_owned();
                 }
+                println!("{}", res);
             }
             return None;
         } else if args[0] == "--config" {
             if args.len() == 2 && !args[0].contains("host=") {
-                if crate::platform::is_installed() && is_root() {
-                    // encrypted string used in renaming exe.
-                    let name = if args[1].ends_with(".exe") {
-                        args[1].to_owned()
-                    } else {
-                        format!("{}.exe", args[1])
-                    };
-                    if let Ok(lic) = crate::custom_server::get_custom_server_from_string(&name) {
-                        if !lic.host.is_empty() {
-                            crate::ui_interface::set_option("key".into(), lic.key);
-                            crate::ui_interface::set_option(
-                                "custom-rendezvous-server".into(),
-                                lic.host,
-                            );
-                            crate::ui_interface::set_option("api-server".into(), lic.api);
-                            crate::ui_interface::set_option("relay-server".into(), lic.relay);
-                        }
-                    }
+                let name = if args[1].ends_with(".exe") {
+                    args[1].to_owned()
                 } else {
-                    println!("Installation and administrative privileges required!");
+                    format!("{}.exe", args[1])
+                };
+                if let Ok(lic) = crate::custom_server::get_custom_server_from_string(&name) {
+                    if !lic.host.is_empty() {
+                        crate::ui_interface::set_option("key".into(), lic.key);
+                        crate::ui_interface::set_option(
+                            "custom-rendezvous-server".into(),
+                            lic.host,
+                        );
+                        crate::ui_interface::set_option("api-server".into(), lic.api);
+                        crate::ui_interface::set_option("relay-server".into(), lic.relay);
+                    }
                 }
             }
             return None;
         } else if args[0] == "--option" {
-            if is_cli_setting_change_disabled() {
-                println!("Settings are disabled!");
-                return None;
-            }
-            if crate::platform::is_installed() && is_root() {
-                if args.len() == 2 {
-                    let options = crate::ipc::get_options();
-                    println!("{}", options.get(&args[1]).unwrap_or(&"".to_owned()));
-                } else if args.len() == 3 {
-                    crate::ipc::set_option(&args[1], &args[2]);
-                }
-            } else {
-                println!("Installation and administrative privileges required!");
+            if args.len() == 2 {
+                let options = crate::ipc::get_options();
+                println!("{}", options.get(&args[1]).unwrap_or(&"".to_owned()));
+            } else if args.len() == 3 {
+                crate::ipc::set_option(&args[1], &args[2]);
             }
             return None;
         } else if args[0] == "--assign" {
             if config::Config::no_register_device() {
                 println!("Cannot assign an unregistrable device!");
-            } else if crate::platform::is_installed() && is_root() {
+            } else {
                 let max = args.len() - 1;
                 let pos = args.iter().position(|x| x == "--token").unwrap_or(max);
                 if pos < max {
@@ -628,8 +588,6 @@ pub fn core_main() -> Option<CoreMainAction> {
                 } else {
                     println!("--token is required!");
                 }
-            } else {
-                println!("Installation and administrative privileges required!");
             }
             return None;
         } else if args[0] == "--deploy" {
@@ -637,7 +595,7 @@ pub fn core_main() -> Option<CoreMainAction> {
                 println!("Cannot deploy an unregistrable device!");
             } else if config::is_outgoing_only() {
                 println!("Cannot deploy Outgoing-only clients.");
-            } else if crate::platform::is_installed() && is_root() {
+            } else {
                 let max = args.len() - 1;
                 let pos = args.iter().position(|x| x == "--token").unwrap_or(max);
                 if pos >= max {
@@ -679,8 +637,6 @@ pub fn core_main() -> Option<CoreMainAction> {
                         std::process::exit(1);
                     }
                 }
-            } else {
-                println!("Installation and administrative privileges required!");
             }
             return None;
         } else if args[0] == "--check-hwcodec-config" {
