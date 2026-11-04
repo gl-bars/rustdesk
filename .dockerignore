@@ -1,0 +1,5 @@
+target/
+flutter/.dart_tool/
+flutter/build/
+flutter/pubspec.lock
+.git/
